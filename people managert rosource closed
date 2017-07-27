@@ -1,0 +1,533 @@
+Sub MacroClosed()
+
+Dim cClosed, Nodata As Integer '@ 2016/05/09 by Fu
+
+ cClosed = 8 'the number of Column "Closed" @ 2016/05/09 by Fu
+ 
+    Application.FileDialog(msoFileDialogFolderPicker).Title = "Please choose CLOSE folder"
+    If Application.FileDialog(msoFileDialogFolderPicker).Show = -1 Then
+        closeDir = Application.FileDialog(msoFileDialogFolderPicker).SelectedItems.Item(1)
+    Else
+    
+    MsgBox "Please choose a folder"
+    Exit Sub
+    End If
+    
+    Application.FileDialog(msoFileDialogFolderPicker).Title = "Please choose a folder to save"
+    If Application.FileDialog(msoFileDialogFolderPicker).Show = -1 Then
+        saveDir = Application.FileDialog(msoFileDialogFolderPicker).SelectedItems.Item(1)
+    Else
+    
+    MsgBox "Please choose a folder"
+    Exit Sub
+    End If
+    
+    fileDate = InputBox("Please input the date(yymmdd)", "Date", Format(Now, "yymmdd"))
+    
+    closeData = Dir(closeDir & "\*.xls")
+    
+    Application.DisplayAlerts = False
+    
+    Do While closeData <> ""
+        wb = closeData
+        Workbooks.Open closeDir & "\" & wb
+
+        Dim SheetName As String
+        SheetName = Sheets(1).Name
+        Sheets(1).Name = "Sheet1"
+        Cells.Select
+        With Selection.Font
+            .Name = "‚l‚r ‚oƒSƒVƒbƒN"
+            .Size = 11
+        End With
+        Rows(1).Interior.Color = xlNone
+        
+        Sheets("Sheet2").Delete
+        Sheets("Sheet3").Delete
+        Columns("A:A").Select
+        Columns("A:A").EntireColumn.AutoFit
+        Rows("1:1").Select
+        With Selection
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+        End With
+        
+    '   procedure when no data @ 2016/05/09 by Fu
+        If Cells(2, 8) = "" Then
+        Nodata = MsgBox("Please check if there's on data. For saving file and continuing, please click OK.", vbOKCancel, "Detect no data")
+         Select Case Nodata
+         Case Is = 1
+         GoTo Savefile
+         Case Else
+         Exit Sub
+         End Select
+        End If
+            
+    '   set the color by TOTHRS
+        Dim cTOTHRS As Integer
+        Dim rTotal As Integer
+        Dim cTotal As Integer
+        Dim j As Integer
+        cTOTHRS = 0
+        j = 0
+        cTotal = ActiveSheet.UsedRange.Columns.Count
+        rTotal = ActiveSheet.UsedRange.Rows.Count
+        Do Until Cells(1, 1).Offset(0, cTOTHRS).Formula = "TOTHRS"
+            cTOTHRS = cTOTHRS + 1
+        Loop
+        Cells(2, cTOTHRS + 1).Select
+        For j = 0 To rTotal - 2
+            If Cells(2, cTOTHRS + 1).Offset(j, 0) >= 100 Then
+                Range(Cells(j + 2, 1), Cells(j + 2, cTotal)).Interior.Color = 16764159
+            ElseIf Cells(2, cTOTHRS + 1).Offset(j, 0) >= 50 Then
+               Range(Cells(j + 2, 1), Cells(j + 2, cTotal)).Interior.Color = 13434879
+            End If
+        Next j
+        
+    '   sort by DIV/BEHRS/FEHRS
+        Dim cBEHRS As Integer
+        Dim cFEHRS As Integer
+        cBEHRS = 0
+        cFEHRS = 0
+        Do Until Cells(1, 1).Offset(0, cBEHRS).Formula = "BEHRS"
+            cBEHRS = cBEHRS + 1
+        Loop
+        Do Until Cells(1, 1).Offset(0, cFEHRS).Formula = "FEHRS"
+            cFEHRS = cFEHRS + 1
+        Loop
+        
+        Cells.Select
+        ActiveWorkbook.Worksheets(1).Sort.SortFields.Clear
+        ActiveWorkbook.Worksheets(1).Sort.SortFields.Add Key:=Range( _
+            "A:A"), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+            xlSortNormal
+        ActiveWorkbook.Worksheets(1).Sort.SortFields.Add Key:=Range( _
+            Cells(1, cBEHRS + 1), Cells(rTotal, cBEHRS + 1)), SortOn:=xlSortOnValues, Order:= _
+            xlAscending, DataOption:=xlSortNormal
+        ActiveWorkbook.Worksheets(1).Sort.SortFields.Add Key:=Range( _
+            Cells(1, cFEHRS + 1), Cells(rTotal, cFEHRS + 1)), SortOn:=xlSortOnValues, Order:= _
+            xlDescending, DataOption:=xlSortNormal
+        With ActiveWorkbook.Worksheets(1).Sort
+            .SetRange Range(Cells(1, 1), Cells(rTotal, cTotal))
+            .Header = xlYes
+            .MatchCase = False
+            .Orientation = xlTopToBottom
+            .SortMethod = xlPinYin
+            .Apply
+        End With
+        
+        
+    '   Insert Flag
+        Dim i_BEHRS As Integer
+        Dim i_FEHRS As Integer
+        i_BEHRS = cBEHRS - cTotal
+        i_FEHRS = cFEHRS - cTotal
+        Cells(1, cTotal + 1).Select
+        ActiveCell.FormulaR1C1 = "Flag"
+        Cells(2, cTotal + 1).Select
+        ActiveCell.FormulaR1C1 = "=IF(RC[" & i_BEHRS & "]=0,""FEO"",IF(RC[" & i_FEHRS & "]=0,""BEO"",""FE & BE""))"
+        If Cells(3, cClosed) <> "" Then '@ 2016/05/09 by Fu
+        Selection.AutoFill Destination:=Range(Cells(2, cTotal + 1), Cells(rTotal, cTotal + 1))
+        End If
+        Range(Cells(2, cTotal + 1), Cells(rTotal, cTotal + 1)).Select
+        Selection.Copy
+        Cells(2, cTotal + 1).Select
+        Selection.PasteSpecial Paste:=xlPasteValues
+        Dim cTotals As Integer
+        cTotals = cTotal + 1
+        
+    '   Insert PivotTable
+        Cells(1, 1).Select
+        Sheets.Add
+        ActiveWorkbook.PivotCaches.Create(SourceType:=xlDatabase, SourceData:= _
+            "Sheet1!R1C1:R" & rTotal & "C" & cTotals, Version:=xlPivotTableVersion10). _
+            CreatePivotTable TableDestination:="Sheet2!R3C1", TableName:="PivotTable1", _
+            DefaultVersion:=xlPivotTableVersion10
+        Sheets("Sheet2").Select
+        Cells(3, 1).Select
+        With ActiveSheet.PivotTables("PivotTable1").PivotFields("DIV")
+            .Orientation = xlColumnField
+            .Position = 1
+        End With
+        With ActiveSheet.PivotTables("PivotTable1").PivotFields("Flag")
+            .Orientation = xlRowField
+            .Position = 1
+        End With
+        ActiveSheet.PivotTables("PivotTable1").AddDataField ActiveSheet.PivotTables("PivotTable1" _
+            ).PivotFields("SGTAT"), "Sum of SGTAT", xlSum
+        With ActiveSheet.PivotTables("PivotTable1").PivotFields("Sum of SGTAT")
+            .Caption = "Average of SGTAT"
+            .Function = xlAverage
+        End With
+        ActiveSheet.PivotTables("PivotTable1").AddDataField ActiveSheet.PivotTables( _
+            "PivotTable1").PivotFields("FEHRS"), "Sum of FEHRS", xlSum
+        With ActiveSheet.PivotTables("PivotTable1").DataPivotField
+            .Orientation = xlColumnField
+            .Position = 2
+        End With
+        ActiveSheet.PivotTables("PivotTable1").AddDataField ActiveSheet.PivotTables( _
+            "PivotTable1").PivotFields("BEHRS"), "Sum of BEHRS", xlSum
+        ActiveSheet.PivotTables("PivotTable1").AddDataField ActiveSheet.PivotTables( _
+            "PivotTable1").PivotFields("TOTHRS"), "Sum of TOTHRS", xlSum
+        With ActiveSheet.PivotTables("PivotTable1").PivotFields("PROB")
+            .Orientation = xlRowField
+            .Position = 2
+        End With
+        ActiveSheet.PivotTables("PivotTable1").AddDataField ActiveSheet.PivotTables( _
+            "PivotTable1").PivotFields("PROB"), "Count of PROB", xlCount
+        With ActiveSheet.PivotTables("PivotTable1").DataPivotField
+            .Orientation = xlRowField
+            .Position = 2
+        End With
+        Sheets(2).Name = SheetName
+        
+        ActiveSheet.PivotTables("PivotTable1").PivotSelect "", xlDataAndLabel, True
+        Selection.Copy
+        Sheets.Add After:=Sheets(Sheets.Count)
+        Range("B3").Select
+        Selection.PasteSpecial Paste:=xlPasteValues
+        Columns("A:A").Select
+        Columns("A:A").EntireColumn.AutoFit
+        Cells.Select
+        Application.CutCopyMode = False
+        With Selection.Font
+            .Name = "‚l‚r ‚oƒSƒVƒbƒN"
+            .Size = 11
+        End With
+        
+    '   without BEO and order BEO     @ 2016/04/18 by Fu
+        If Range("B10").Formula = "BEO" Then
+            Rows("10:14").Cut
+            Range("A5").Insert Shift:=xlDown
+        ElseIf Range("B15").Formula = "BEO" Then
+            Rows("15:19").Cut
+            Range("A5").Insert Shift:=xlDown
+        ElseIf Range("B5").Formula <> "BEO" Then
+              Rows("5:5").Select
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Range("B5") = "BEO"
+              Range("C10:C14").Copy Range("C5")
+        End If
+        
+    '   without FEO and order FEO     @ 2016/04/18 by Fu
+        If Range("B10").Formula = "FEO" Then
+            Rows("10:14").Cut
+            Range("A5").Insert Shift:=xlDown
+        ElseIf Range("B15").Formula = "FEO" Then
+            Rows("15:19").Cut
+            Range("A5").Insert Shift:=xlDown
+        ElseIf Range("B5").Formula <> "FEO" Then
+              Rows("5:5").Select
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Range("B5") = "FEO"
+              Range("C10:C14").Copy Range("C5")
+        End If
+            
+     '   without FE & BE              @ 2016/04/18 by Fu
+        If Range("B15").Formula <> "FE & BE" Then
+             Rows("15:15").Select
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Selection.Insert Shift:=xlDown
+              Range("B15") = "FE & BE"
+              Range("C10:C14").Copy Range("C15")
+        End If
+                   
+    '   modify the format
+        Rows("5:5").Select
+        Selection.Insert Shift:=xlDown
+        Range("B4:C4").Select
+        Selection.Cut
+        Range("B5").Select
+        ActiveSheet.Paste
+        
+    '   insert the HPP columns
+        cTotal = ActiveSheet.UsedRange.Columns.Count
+        If cTotal = 4 Then
+            Columns("E:E").Select
+            Selection.Insert Shift:=xlToRight
+            Range("E5").Select
+            ActiveCell.FormulaR1C1 = "HPP"
+            Columns("F:F").Select
+            Selection.Delete
+        Else
+            Dim i As Integer
+            i = 1
+            For i = 1 To cTotal - 2
+                Range(Cells(1, 3 + 2 * i), Cells(65536, 3 + 2 * i)).Select
+                Selection.Insert Shift:=xlToRight
+                Cells(5, 3 + 2 * i).Select
+                ActiveCell.FormulaR1C1 = "HPP"
+            Next i
+        End If
+        
+    '   modify the format of title rows and insert HPP by formula
+        cTotal = ActiveSheet.UsedRange.Columns.Count
+        Range(Cells(3, 4), Cells(3, cTotal + 1)).Select
+        With Selection
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+        End With
+        Selection.Merge
+        
+        Dim k As Integer
+        Dim CountMerge As Integer
+        k = 1
+        CountMerge = (cTotal - 2) / 2
+        For k = 1 To CountMerge
+            Range(Cells(4, 2 * k + 2), Cells(4, 2 * k + 3)).Select
+            With Selection
+                .HorizontalAlignment = xlCenter
+                .VerticalAlignment = xlCenter
+            End With
+            Selection.Merge
+            
+            If Cells(10, 2 * k + 2).Value <> "" Then
+                Cells(7, 2 * k + 3).Select
+                ActiveCell.FormulaR1C1 = "=RC[-1]/R[3]C[-1]"
+                Cells(9, 2 * k + 3).Select
+                ActiveCell.FormulaR1C1 = "=RC[-1]/R[1]C[-1]"
+            End If
+            If Cells(15, 2 * k + 2).Value <> "" Then
+                Cells(13, 2 * k + 3).Select
+                ActiveCell.FormulaR1C1 = "=RC[-1]/R[2]C[-1]"
+                Cells(14, 2 * k + 3).Select
+                ActiveCell.FormulaR1C1 = "=RC[-1]/R[1]C[-1]"
+            End If
+            If Cells(20, 2 * k + 2).Value <> "" Then
+                Cells(17, 2 * k + 3).Select
+                ActiveCell.FormulaR1C1 = "=RC[-1]/R[3]C[-1]"
+                Cells(18, 2 * k + 3).Select
+                ActiveCell.FormulaR1C1 = "=RC[-1]/R[2]C[-1]"
+                Cells(19, 2 * k + 3).Select
+                ActiveCell.FormulaR1C1 = "=RC[-1]/R[1]C[-1]"
+            End If
+            Cells(22, 2 * k + 3).Select
+            ActiveCell.FormulaR1C1 = "=RC[-1]/(R[-12]C[-1]+R[-2]C[-1])"
+            Cells(23, 2 * k + 3).Select
+            ActiveCell.FormulaR1C1 = "=RC[-1]/(R[-8]C[-1]+R[-3]C[-1])"
+            Cells(24, 2 * k + 3).Select
+            ActiveCell.FormulaR1C1 = "=RC[-1]/R[1]C[-1]"
+        Next k
+        
+        Range(Cells(5, 4), Cells(5, cTotal + 1)).Select
+        With Selection
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+        End With
+        
+    '   set the borders
+        Range(Cells(3, 2), Cells(25, cTotal + 1)).Select
+        Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+        Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+        With Selection.Borders(xlEdgeLeft)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThick
+        End With
+        With Selection.Borders(xlEdgeTop)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThick
+        End With
+        With Selection.Borders(xlEdgeBottom)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThick
+        End With
+        With Selection.Borders(xlEdgeRight)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThick
+        End With
+        With Selection.Borders(xlInsideVertical)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThin
+        End With
+        With Selection.Borders(xlInsideHorizontal)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThin
+        End With
+        Range(Cells(6, 2), Cells(10, cTotal + 1)).Select
+        Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+        Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+        With Selection.Borders(xlEdgeLeft)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThick
+        End With
+        With Selection.Borders(xlEdgeTop)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlMedium
+        End With
+        With Selection.Borders(xlEdgeBottom)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlMedium
+        End With
+        With Selection.Borders(xlEdgeRight)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThick
+        End With
+        With Selection.Borders(xlInsideVertical)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThin
+        End With
+        With Selection.Borders(xlInsideHorizontal)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThin
+        End With
+        Range(Cells(16, 2), Cells(20, cTotal + 1)).Select
+        Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+        Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+        With Selection.Borders(xlEdgeLeft)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThick
+        End With
+        With Selection.Borders(xlEdgeTop)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlMedium
+        End With
+        With Selection.Borders(xlEdgeBottom)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlMedium
+        End With
+        With Selection.Borders(xlEdgeRight)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThick
+        End With
+        With Selection.Borders(xlInsideVertical)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThin
+        End With
+        With Selection.Borders(xlInsideHorizontal)
+            .LineStyle = xlContinuous
+            .ColorIndex = xlAutomatic
+            .TintAndShade = 0
+            .Weight = xlThin
+        End With
+        Range("B3:C4").Select
+        With Selection
+            .HorizontalAlignment = xlCenter
+            .VerticalAlignment = xlCenter
+        End With
+        Selection.Merge
+    
+        Rows("2:2").Select
+        Selection.Insert Shift:=xlDown
+        Columns("B:C").Select
+        Columns("B:C").EntireColumn.AutoFit
+        Range("B22:C22").Select
+        Selection.Merge
+        Range("B23:C23").Select
+        Selection.Merge
+        Range("B24:C24").Select
+        Selection.Merge
+        Range("B25:C25").Select
+        Selection.Merge
+        Range("B26:C26").Select
+        Selection.Merge
+        
+    '   set the format of number
+        Range("7:7,8:8,10:10,12:12,14:14,15:15,17:17,18:18,19:19,20:20,22:22,23:23,24:24,25:25").Select
+        Range("A25").Activate
+        Selection.NumberFormatLocal = "#,##0.0;[red]#,##0.0"
+        Range("11:11,16:16,21:21,26:26").Select
+        Range("A26").Activate
+        Selection.NumberFormatLocal = "#,##0;[red]#,##0"
+        Range("A1").Select
+        
+    '   name
+        Sheets(3).Select
+        Sheets(3).Name = "WŒv"
+        Sheets("WŒv").Select
+        With ActiveWorkbook.Sheets("WŒv").Tab
+            .Color = 15773696
+        End With
+        Cells.Select
+        ActiveWindow.DisplayGridlines = False
+        Range("A1").Select
+        
+    '   hide the Flag column
+        Sheets(2).Select
+        cTotal = ActiveSheet.UsedRange.Columns.Count
+        Range(Cells(1, cTotal), Cells(65536, cTotal)).Select
+        Selection.EntireColumn.Hidden = True
+        Range("A1").Select
+        
+    '   delete the Pivot
+        Sheets(1).Select
+        Application.DisplayAlerts = False
+        ActiveWindow.SelectedSheets.Delete
+        Application.DisplayAlerts = True
+        
+Savefile:
+        Workbooks(wb).Sheets(1).Name = Left(wb, Len(wb) - 4) & fileDate
+        
+        Workbooks(wb).SaveAs saveDir & "\" & Left(wb, Len(wb) - 4) & fileDate & ".xls"
+        ActiveWorkbook.Close
+        closeData = Dir
+    Loop
+    
+    'System z_CL_yymmdd.xls/System z_YYMMM_CL.xls‚ÌAC—ñ‚ðíœ‚·‚éB
+    
+    Dim systemz As Object
+    Set systemz = CreateObject("Scripting.FileSystemObject")
+    
+    If systemz.FileExists(saveDir & "\System z_CL_" & fileDate & ".xls") = True Then
+        systemzExcel = "System z_CL_" & fileDate & ".xls"
+    ElseIf systemz.FileExists(saveDir & "\System z_" & fileDate & ".xls") = True Then
+        systemzExcel = "System z_" & fileDate & ".xls"
+    Else
+        MsgBox "System z_CL_" & fileDate & ".xls or System z_" & fileDate & ".xls doesn't exist"
+        Exit Sub
+    End If
+    
+    Workbooks.Open saveDir & "\" & systemzExcel
+    Workbooks(systemzExcel).Sheets(1).Columns("N:N").Delete
+    Workbooks(systemzExcel).Save
+    Workbooks(systemzExcel).Close
+    
+    Application.DisplayAlerts = True
+    
+End Sub
+
+
